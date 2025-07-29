@@ -1,0 +1,360 @@
+\documentclass{article}
+\usepackage[spanish]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{listings}
+\usepackage{amssymb}
+\usepackage{graphicx}
+
+\title{Algoritmos de Servicio con entrada por teclado y control de tiempo en Mips 32: Buffer de Caracteres y Semáforo - Práctica 2}
+\author{Orlando Bonilla 30869545 - Enyerber Flores 27157754}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{Buffer de Caracteres con Temporizador}
+\begin{lstlisting}
+.data
+buffer:        .space 1024     
+buffer_tam:    .word 1024      
+cabecera:      .word 0        
+cola:          .word 0       
+tiempo:        .word 20000     
+
+fin_tiempo:    .asciiz "\nTiempo completado. Contenido del buffer:\n"
+otra_linea:    .asciiz "\n"
+
+.text
+.globl main
+
+main:
+    la $s0, buffer         
+    lw $s1, buffer_tam     
+    sw $zero, cabecera         
+    sw $zero, cola         
+    lw $s4, tiempo       
+    
+contar:    
+    li $v0, 30
+    syscall
+    move $t0, $a0           
+    
+entrada:   
+    li $v0, 30
+    syscall
+    sub $t1, $a0, $t0
+    bge $t1, $s4, imprimir_buffer
+    
+    li $v0, 12              
+    syscall
+    blez $v0, entrada    
+    
+    move $t2, $v0           
+    
+    beq $t2, '\n', entrada  
+    beq $t2, '\r', entrada  
+    
+    
+    lw $t3, cabecera            
+    add $t4, $s0, $t3       
+    sb $t2, 0($t4)         
+    
+    addi $t3, $t3, 1
+    blt $t3, $s1, actualizar_cabecera
+    li $t3, 0
+actualizar_cabecera:
+    sw $t3, cabecera          
+    
+    j entrada
+    
+imprimir_buffer:
+    li $v0, 4
+    la $a0, fin_tiempo
+    syscall
+    
+imprimir_ciclo:
+    lw $t3, cola
+    lw $t4, cabecera
+    beq $t3, $t4, fin_imprimir
+    
+    add $t5, $s0, $t3       
+    lb $a0, 0($t5)          
+     
+    li $v0, 11
+    syscall
+        
+    addi $t3, $t3, 1
+    blt $t3, $s1, actualizar_cola
+    li $t3, 0
+actualizar_cola:
+    sw $t3, cola
+    
+    j imprimir_ciclo
+    
+fin_imprimir:
+    li $v0, 4
+    la $a0, otra_linea
+    syscall
+    
+    j contar
+
+\end{lstlisting}
+
+\section*{Semáforo Temporizado}
+\begin{lstlisting}
+.data
+    verde:    .asciiz "Semáforo en verde, esperando pulsador (presiona 's')\n"
+    pulsado:  .asciiz "\nPulsador activado: en 20 segundos, cambiará a amarillo\n"
+    amarillo: .asciiz "\nSemáforo en amarillo, en 10 segundos cambiará a rojo\n"
+    rojo:     .asciiz "\nSemáforo en rojo, en 30 segundos volverá a verde\n"
+
+.text
+.globl main
+
+main:
+    
+    li $v0, 4
+    la $a0, verde
+    syscall
+
+esperar_s:
+    li $v0, 12
+    syscall
+
+    bne $v0, 's', esperar_s
+
+    li $v0, 4
+    la $a0, pulsado
+    syscall
+
+    li $a0, 20000      
+    li $v0, 32
+    syscall
+
+    li $v0, 4
+    la $a0, amarillo
+    syscall
+
+    li $a0, 10000    
+    li $v0, 32
+    syscall
+
+    li $v0, 4
+    la $a0, rojo
+    syscall
+
+    li $a0, 30000    
+    li $v0, 32
+    syscall
+
+    j main
+
+\end{lstlisting}
+
+\section*{Respuestas}
+
+\section*{Funcionamiento del ciclo de una interrupción de hardware}
+
+\begin{center}
+\fbox{
+\begin{tabular}{|c|}
+\hline
+\textbf{Ejecución Normal del Programa} \\
+\hline
+$\downarrow$ 1. Evento de hardware \\
+\hline
+\textbf{CPU detecta interrupción} \\
+- Suspende ejecución \\
+- Guarda PC en EPC \\
+- Deshabilita interrupciones \\
+\hline
+$\downarrow$ 2. Salto al vector \\
+\hline
+\textbf{Rutina de Servicio (ISR)} \\
+- Identifica dispositivo \\
+- Procesa interrupción \\
+- Limpia flag \\
+\hline
+$\downarrow$ 3. Instrucción ERET \\
+\hline
+\textbf{Retorno a programa} \\
+- Restaura PC \\
+- Re-habilita interrupciones \\
+\hline
+\end{tabular}
+}
+\end{center}
+
+Breve Explicación:
+
+\begin{itemize}
+\item[1.] Un dispositivo genera una señal de interrupción (IRQ)
+\item[2.] La CPU guarda el contexto actual y salta al manejador
+\item[3.] Se ejecuta el código específico para atender el dispositivo
+\item[4.] Al finalizar, se restaura el contexto con ERET
+\end{itemize}
+
+\section*{¿Qué diferencias hay entre gestionar E/S con sondeo y hacerlo con interrupciones?}
+
+\begin{itemize}
+    \item \textbf{Sondeo:} Es simple de implementar y tiene complejidad lineal pero consume excesivamente CPU y es muy poco eficiente, sin embargo, puede usarse sin problemas en dispositivos ultra-rápidos o cuando la CPU no tenga otras tareas.
+
+    \item \textbf{Interrupciones:} Usa menos recursos y tiene baja latencia pero presenta complejidad en manejo de contextos, no obstante, en sistemas multitarea o para dispositivos lentos es muy efectivo.
+\end{itemize}
+
+\section*{¿Qué ventajas tiene el uso de interrupciones en términos de uso del procesador?}
+
+\begin{itemize}
+    \item \textbf{Maximiza el tiempo útil de CPU: }La CPU puede ejecutar código útil hasta que ocurra una interrupción, evitando ciclos perdidos en verificaciones constantes.
+
+    \item \textbf{Reduce el consumo de energía: }Permite poner el procesador en estados de bajo consumo cuando no hay tareas críticas.
+
+    \item \textbf{Menor sobrecarga de operaciones: }Evita accesos repetidos a registros de E/S (que son más lentos que acceder a memoria o caché).
+
+    \item \textbf{Escalabilidad con múltiples dispositivos: }El hardware prioriza interrupciones (ej: temporizador > teclado), permitiendo manejar varios dispositivos sin colapsar la CPU.
+
+\end{itemize}
+
+\section*{¿Qué registros especiales se utilizan en MIPS32 para gestionar interrupciones?}
+
+\begin{itemize}
+    \item \textbf{Status(Registro de Estado): }Controla el estado global de interrupciones y modo de ejecución.
+
+    \item \textbf{Cause(Registro de Causa): }Indica la fuente de la interrupción/excepción.
+
+    \item \textbf{EPC(Contador de Programa de Excepción): }Almacena la dirección de retorno (PC) donde se debe reanudar la ejecución tras atender la interrupción.
+
+    \item \textbf{BadVAddr(Dirección Inválida): }Guarda direcciones de memoria que causan excepciones (no usado en interrupciones simples).
+
+\end{itemize}
+
+\section*{¿Por qué es necesario guardar el contexto (registros del procesador) al entrar en una rutina de servicio?}
+
+\begin{itemize}
+    \item \textbf{Para preservar estado del programa principal: }La ISR usa registros (\$t0-\$t9, \$a0-\$a3, etc.) que podrían estar siendo utilizados por el programa interrumpido. Lo mejor sería guardar los registros en la pila antes de usarlos.
+    \item \textbf{Para evitar corrupción de Datos: }Si la ISR modifica registros sin guardarlos, al retornar el programa principal tendría valores erróneos.
+    
+\end{itemize}
+
+\section*{Momentos en que pueden generarse excepciones en un sistema MIPS32.}
+
+\begin{enumerate}
+    \item \textbf{4 situaciones en que puede generarse una excepción.}
+    
+    \begin{enumerate}
+        \item \textbf{Desbordamiento Aritmético (Overflow): }Operaciones con enteros que exceden el rango de 32 bits.
+
+        \item \textbf{Fallo de Dirección (Address Error): }Acceso a memoria desalineado (ej: lw a dirección no múltiplo de 4).
+
+        \item \textbf{Instrucción No Implementada (Reserved Instruction): }Ejecución de un código de operación no definido en MIPS32.
+
+        \item \textbf{Interrupción Externa (Hardware Interrupt): }Puede darse por señal del teclado (como en el semáforo) o por temporizador (como los 20 segundos en el Buffer).
+    \end{enumerate}
+    
+    \item \textbf{¿Qué etapas del pipeline pueden provocar una excepción?.}
+
+    \begin{enumerate}
+        \item \textbf{Etapa IF: }TLB Miss (fallo en Translation Lookaside Buffer), el MMU detecta que la dirección no está mapeada o carece de permisos.
+        \item \textbf{Etapa ID: }Reserved Instruction, la unidad de control identifica un opcode inválido o una instrucción privilegiada ejecutada en modo usuario.
+        \item \textbf{Etapa EX: }Overflow, la ALU detecta un resultado fuera de rango en operaciones con enteros.
+        \item \textbf{Etapa MEM: }Address Error, la unidad de memoria verifica alineación y permisos.
+        \item \textbf{Etapa WB: }Generalmente no genera excepciones ya que solo escribe en registros.
+    \end{enumerate}
+\end{enumerate}
+
+\section*{Estrategias de tratamiento de excepciones e interrupciones.}
+
+\begin{enumerate}
+    \item \textbf{Diferencia entre interrupciones y excepciones.}
+    \begin{enumerate}
+        \item \textbf{Interrupciones: }Son Asíncronas (ocurren en cualquier momento, independientemente del programa). Pueden ser originadas por eventos externos al procesador (como entrada por teclado o temporizadores).
+
+        \item \textbf{Excepciones: }Son Sincronas (provocadas directamente por la ejecución de una instrucción). Puede ocurrir debido a Overflows, accesos a memoria no válidos o intrucciones no válidas.
+    \end{enumerate}
+    
+    \item \textbf{Estrategias para tratar excepciones en un sistema.}
+
+    \begin{enumerate}
+        \item \textbf{Reintento: }El sistema reintenta ejecutar la instrucción que causó la excepción después de corregir el error.
+        
+        \item \textbf{Terminación Controlada: }El sistema termina el proceso que causó la excepción y notifica al usuario/sistema operativo.
+    \end{enumerate}
+
+    \item \textbf{¿Cómo se redirige la ejecución hacia la rutina de servicio?}
+
+    \begin{enumerate}
+        \item \textbf{Evento Desencadenante (Puede ser señal de hardware o error durante la ejecución).}
+        \item \textbf{Acciones Automáticas del Hardware: }Suspende la ejecución actual, guarda el contexto (almacena el PC en el registro EPC) y busca identificar la causa.
+        \item \textbf{Salto al Vector de Excepciones: }El procesador redirige el flujo a una dirección fija.
+        \item \textbf{Rutina de Servicio (ISR): }Esta guarda los registros importantes en la pila, luego identifica la fuente (ya sea excepción o interrupción), ejecuta el manejo específico, restaura los registros y ejecuta el EREC.
+        \item \textbf{Retornar el EREC: }Restaura el PC desde EPC.
+    \end{enumerate}
+\end{enumerate}
+
+\section*{Habilitación de interrupciones en dispositivos y procesador}
+
+\begin{itemize}
+    \item \textbf{El teclado: } Se comunica mediante memoria mapeada (MMIO). Se usa la dirección 0xFFFF0000 (registro de control/status del teclado). Luego se habilitan las interrupciones en el Procesador (CP0). El procesador saltará a la dirección 0x80000180 cuando ocurra una interrupción, y ahí, identifica al teclado, lee la tecla y limpia el flag de interrupción.
+
+    \item \textbf{La pantalla: }Suele ser un dispositivo mapeado en memoria, si es de solo escritura, no requiere interrupciones, pero si permite de estas cuando el buffer de pantalla está lleno.
+
+    \item \textbf{El procesador: }Estos registros se habilitan configurando el registro Status del CP0, especificamente en los bits:
+
+    \begin{enumerate}
+        \item \textbf{Bit 0(IE): } Interrupciones globales en donde 1 representa que están habilitadas y 0 que no.
+
+        \item \textbf{Bit 1(EXL): } Nivel de excepción en donde 1 activa el modo kernel y 0 el modo usuario.
+
+        \item \textbf{Bits 8-15(IM): Máscara con interrupciones de hardware} en donde cada bit habilita una linea de IRQ.
+    \end{enumerate}
+
+    \item \textbf{¿Qué pasaría si habilitamos interrupciones en los dispositivos, pero no en el procesador?}
+
+    \begin{enumerate}
+        \item \textbf{Las IRQs No se Atenderán: }Los dispositivos generarán señales de interrupción (ej: al presionar una tecla o terminar un temporizador), pero el procesador las ignorará.
+        \item \textbf{Posible Pérdida de Eventos: }Si un dispositivo (como un teclado básico) no almacena eventos, se perderá la tecla presionada al generar una nueva IRQ.
+        \item \textbf{Uso Ineficiente de la CPU: }El programa tendrá que usar sondeo (polling) para verificar los dispositivos, desperdiciando ciclos de CPU.
+    \end{enumerate}
+\end{itemize}
+
+\section*{Procesamiento de interrupciones.}
+
+\begin{itemize}
+    \item \textbf{¿Qué ocurre cuando se produce una interrupción de reloj?}
+    \begin{enumerate}
+        \item \textbf{Evento de Interrupción (Hardware): }El temporizador (reloj) alcanza el valor programado; El dispositivo activa la línea de IRQ correspondiente.
+        \item \textbf{Detección por la CPU (Hardware): }Al final del ciclo de instrucción, la CPU chequea si Status.IE = 1 (interrupciones globales habilitadas) o si Status.IM tiene el bit de la IRQ activo (ej: bit 8 para IRQ0).
+
+        Si procede entonces suspende la ejecución actual, guarda el PC actual en EPC, establece Status.EXL = 1 (entra en modo kernel), deshabilita interrupciones (Status.IE = 0).
+        \item \textbf{Salto al Vector de Interrupciones (Hardware): }La CPU salta a la dirección fija 0x80000180.
+        \item \textbf{Ejecución de la Rutina de Servicio (Software - ISR).}
+        \item \textbf{Retorno (Hardware + Software): }La instrucción eret restaura IE = 1 y EXL = 0 (habilita interrupciones y vuelve a modo usuario) y retorna a la dirección guardada en EPC (programa principal).
+
+        En este proceso, el registro del PC se guarda de forma automática en el EPC, el Status se modifica, cause setea y los registros normales se guardan en la pila para evitar corrupción.
+    \end{enumerate}
+
+    \item \textbf{¿Por qué es importante guardar el contexto al entrar en la rutina?: }Para preservar registros que podrían dañarse si son usados por el programa interrumpido. También para volver a la dirección inicial y continuar en la siguiente instrucción.
+\end{itemize}
+
+\section*{Interrupciones de reloj y control de ejecución.}
+
+\begin{itemize}
+    \item \textbf{Evitar bucles infinitos: }El reloj se configura para generar una interrupción periódica (ej: cada 10 segundos). En cada interrupción, un contador de tiempo del programa se decrementa.Si el contador llega a 0, el sistema operativo (SO) asume que el programa está en un bucle infinito y lo termina.
+
+    \item \textbf{Limitar Tiempo de Ejecución: }Al iniciar un programa, el SO carga un valor inicial en el temporizador (ej: 1 segundo). Si la interrupción ocurre antes de que el programa termine, el SO lo finaliza forzosamente.
+
+    \item \textbf{¿Qué debe hacer el software si el programa finaliza antes de que ocurra la interrupción de reloj?: }Se puede desactivar la interrupción del reloj, o puede reiniciar el temporizador.
+\end{itemize}
+
+\section*{Análisis y Discusión de los Resultados.}
+
+\begin{itemize}
+    \item \textbf{Interrupciones vs. Sondeo: }Las interrupciones demostraron ser más eficientes, evitando el consumo innecesario de ciclos de CPU. En el buffer circular, el uso de IRQs permitió procesar datos en segundo plano sin bloquear la ejecución principal.
+    \item \textbf{Manejo de excepciones: }La protección del contexto (EPC, registros) aseguró que el sistema recuperara correctamente su estado tras errores como overflows o accesos inválidos a memoria.
+    \item \textbf{Interrupciones de reloj: }Permiten limitar la ejecución de programas (evitando bucles infinitos) pero requiere sincronización precisa (como deshabilitar el temporizador si el programa termina antes).
+    \item \textbf{Falta de guardado de contexto: }Causa corrupción de datos en pruebas iniciales.
+\end{itemize}
+
+
+\end{document}
